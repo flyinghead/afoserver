@@ -355,6 +355,7 @@ std::string getConfig(const std::string& name, const std::string& default_value)
 
 int main(int argc, char *argv[])
 {
+	setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
 	if (argc > 2) {
 		fprintf(stderr, "Usage: %s [<config file path>]\n", argv[0]);
 		return 1;
