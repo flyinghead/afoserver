@@ -19,6 +19,7 @@
 #include "game.h"
 #include "tomcrypt.h"
 #include "db.h"
+#include "discord.h"
 #include <unordered_map>
 #include <fstream>
 
@@ -283,6 +284,18 @@ private:
 					replyContent += game->getHttpDesc(false);
 					DEBUG_LOG("Create game: %s", replyContent.c_str());
 					replyContent += "\nCREATED\nGAMEDONE\n";
+					int armySlots = 0, alienSlots = 0;
+					for (int i = 0; i < 8; i++)
+					{
+						if (slots[i] == Game::Open || slots[i] == Game::Open_CPU)
+						{
+							if (i >= 4)
+								alienSlots++;
+							else
+								armySlots++;
+						}
+					}
+					discordGameCreated(game->getType(), gameName, playerName, armySlots, alienSlots);
 					break;
 				}
 			}
@@ -363,6 +376,7 @@ int main(int argc, char *argv[])
 	loadConfig(argc < 2 ? "afo.cfg" : argv[1]);
 	serverIp = getConfig("ServerIP", "127.0.0.1");
 	setDatabasePath(getConfig("DatabasePath", "./afo.db"));
+	setDiscordWebhook(getConfig("DiscordWebhook", ""));
 	NOTICE_LOG("Alien Front Online server started");
 	try {
 		asio::io_context io_context;

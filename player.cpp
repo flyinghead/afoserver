@@ -17,6 +17,7 @@
 */
 #include "player.h"
 #include "game.h"
+#include "discord.h"
 
 void GameConnection::receive() {
 	asio::async_read_until(socket, recvBuffer, packetMatcher,
@@ -116,6 +117,23 @@ void Player::receiveTcp(const uint8_t *data, size_t len)
 			connection->sendPacket(0, data, sizeof(data));
 
 			game->sendPlayerList();
+			int armySlots = 0, alienSlots = 0;
+			std::vector<std::string> players;
+			for (int i = 0; i < 8; i++)
+			{
+				if (game->getSlotType(i) == Game::Open || game->getSlotType(i) == Game::Open_CPU)
+				{
+					if (i >= 4)
+						alienSlots++;
+					else
+						armySlots++;
+				}
+				else if (game->getPlayer(i) != nullptr) {
+					players.push_back(game->getPlayer(i)->getName());
+				}
+			}
+			discordGameJoined(game->getType(), game->getName(), name, players, armySlots, alienSlots);
+
 			break;
 		}
 	case 1: // Update extra data?

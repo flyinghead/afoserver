@@ -59,6 +59,7 @@ public:
 	unsigned getMaps() const { return maps; }
 	void setMaps(unsigned maps) { this->maps = maps; }
 
+	SlotType getSlotType(int slot) const { return slots[i].type; }
 	void setSlots(const std::array<SlotType, 8>& slots);
 
 	std::shared_ptr<Player> getPlayer(int slot) const { return slots[slot].player; }

@@ -1,5 +1,5 @@
 #
-# dependencies: libasio-dev libsqlite3-dev
+# dependencies: libasio-dev libsqlite3-dev libcurl-dev
 #
 prefix = /usr/local
 exec_prefix = $(prefix)
@@ -7,8 +7,8 @@ sbindir = $(exec_prefix)/sbin
 sysconfdir = $(prefix)/etc
 CFLAGS = -g -Wall -O3 # -DNDEBUG -fsanitize=address -static-libasan
 CXXFLAGS = $(CFLAGS) -std=c++17
-DEPS=asio.h tomcrypt.h http.h player.h log.h db.h Makefile
-OBJS=http.o rc5.o player.o log.o server.o game.o db.o
+DEPS=asio.h tomcrypt.h http.h player.h log.h db.h discord.h json.hpp Makefile
+OBJS=http.o rc5.o player.o log.o server.o game.o db.o discord.o
 USER = dcnet
 
 all: afoserver
@@ -20,7 +20,7 @@ all: afoserver
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 afoserver: $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) -lpthread -lsqlite3
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) -lpthread -lsqlite3 -lcurl
 
 clean:
 	rm -f $(OBJS) afoserver afo.service
