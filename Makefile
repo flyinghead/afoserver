@@ -20,7 +20,7 @@ all: afoserver
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 afoserver: $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) -lsqlite3
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) -lpthread -lsqlite3
 
 clean:
 	rm -f $(OBJS) afoserver afo.service
