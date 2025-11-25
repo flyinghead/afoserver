@@ -18,7 +18,7 @@
 #include "game.h"
 #include "player.h"
 
-const char *serverIp;
+std::string serverIp;
 
 Game::Game(Server& server, asio::io_context& io_context, uint16_t port)
 	: server(server), io_context(io_context), port(port),
@@ -46,7 +46,7 @@ void Game::setSlots(const std::array<Game::SlotType, 8>& slots) {
 
 std::string Game::getHttpDesc(bool attributes) const
 {
-	std::string s = "Address=" + std::string(serverIp)
+	std::string s = "Address=" + serverIp
 			+ " Port=" + std::to_string(port)
 			+ " Response=20"
 			+ " GameName=" + name
@@ -93,7 +93,8 @@ int Game::assignSlot(Player::Ptr player, bool alien)
 		PlayerSlot& slot = slots[i];
 		if (slot.type == Open || slot.type == Open_CPU)
 		{
-			slot.type = Human;
+			slot.openType = slot.type;
+			slot.type = Filled;
 			slot.player = player;
 			slot.lastUdpReceive = asio::chrono::steady_clock::now();
 			return i;
@@ -212,7 +213,7 @@ void Game::disconnect(Player::Ptr player)
 		if (slot.player == player)
 		{
 			INFO_LOG("Player %s left game %s", slot.player->getName().c_str(), name.c_str());
-			slot.type = Open;
+			slot.type = slot.openType;
 			slot.player->disconnect();
 			slot.player = nullptr;
 		}

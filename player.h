@@ -91,8 +91,6 @@ public:
 	}
 	const asio::ip::udp::endpoint& getUdpEndpoint() const { return endpoint; }
 
-	std::shared_ptr<Game> getGame() const { return game; }
-
 	int assignSlot(bool alien);
 	void receiveTcp(const uint8_t *data, size_t len);
 	void sendTcp(const uint8_t *data, size_t len);

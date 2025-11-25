@@ -20,7 +20,7 @@
 #include "asio.h"
 #include "log.h"
 
-extern const char *serverIp;
+extern std::string serverIp;
 
 class GameAcceptor;
 class Server;
@@ -32,9 +32,19 @@ public:
 	enum SlotType : uint8_t {
 		Open = 0,
 		Open_CPU = 1,
-		Human = 2,
+		Filled = 2,
 		CPU = 3,
+		Balanced = 4,	// Found in game code but unknown usage
+		Filled2 = 5,	// Same
 		Closed = 255
+	};
+	enum GameType : uint8_t {
+		None = 0,
+		Watch = 1,			// Found in game code but unknown usage
+		Competition = 2,	// Same
+		DeathMatch = 3,
+		TeamFortress = 4,
+		CaptureTheFlag = 5,
 	};
 
 	void start();
@@ -43,8 +53,8 @@ public:
 	const std::string& getName() const { return name; }
 	void setName(const std::string& name) { this->name = name; }
 
-	int getType() const { return type; }
-	void setType(int type) { this->type = type; }
+	GameType getType() const { return type; }
+	void setType(GameType type) { this->type = type; }
 
 	unsigned getMaps() const { return maps; }
 	void setMaps(unsigned maps) { this->maps = maps; }
@@ -74,11 +84,12 @@ private:
 	asio::io_context& io_context;
 	std::string name;
 	uint16_t port;
-	int type = 0;
+	GameType type {};
 	unsigned maps = 0;
 	struct PlayerSlot
 	{
 		SlotType type = Closed;
+		SlotType openType = Closed;	// to restore Open or Open/CPU when player leaves
 		std::shared_ptr<Player> player;
 		asio::chrono::time_point<asio::chrono::steady_clock> lastUdpReceive;
 	};

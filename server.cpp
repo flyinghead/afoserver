@@ -18,16 +18,16 @@
 #include "http.h"
 #include "game.h"
 #include "tomcrypt.h"
+#include "db.h"
+#include <unordered_map>
+#include <fstream>
 
-class CgiHandler
-{
-public:
-	virtual ~CgiHandler() = default;
-	virtual void handleRequest(const Request& request, Reply& reply) {
-		WARN_LOG("CGI not found: %s [%s]", request.uri.c_str(), request.content.c_str());
-		reply = Reply::stockReply(Reply::not_found);
-	}
-};
+static std::unordered_map<std::string, std::string> Config;
+
+static void replyNotFound(const Request& request, Reply& reply) {
+	WARN_LOG("CGI not found: %s [%s]", request.uri.c_str(), request.content.c_str());
+	reply = Reply::stockReply(Reply::not_found);
+}
 
 static std::vector<uint8_t> hexStringToBytes(const std::string &s)
 {
@@ -72,49 +72,92 @@ static std::string descramble(const std::string& cs)
 	return ps;
 }
 
-class HighScoreHandler : public CgiHandler
+static std::vector<std::string> splitParams(const std::string& s)
 {
-public:
-	void handleRequest(const Request& request, Reply& reply) override
+	std::vector<std::string> params;
+	size_t start = 0;
+	for (;;)
 	{
-		if (request.content.substr(0, 10) == "request=1 ")
-		{
-			// TODO Naomi: Register new high score
-			std::string s = request.content.substr(10);
-			std::string plain = decrypt(s, NaomiKey);
-			return;
+		size_t end = s.find('&', start);
+		if (end == s.npos) {
+			params.push_back(s.substr(start));
+			break;
 		}
-		if (request.content == "request=2")
-		{
-			// TODO Naomi: Return top 10 players
-			reply.setContent("***100000:FLY:ARCADIA:PARIS:TX&&&");
-			return;
+		else {
+			params.push_back(s.substr(start, end - start));
+			start = end + 1;
 		}
-		if (request.content.substr(0, 10) == "request=3 ")
-		{
-			// TODO DC: Return dc high scores
-			std::string s = request.content.substr(10);
-			//std::string plain = decrypt(s, DreamcastKey);
-			//printf("high score list: unciphered=%s\n", plain.c_str());
-			reply.setContent("***951000:George:Dreamcast:Dreamcast:&934000:George:Dreamcast:Dreamcast:&660000:RPG:Dreamcast:Dreamcast:"
-					"&588600:JJ:Dreamcast:Dreamcast:&510000:Johne:Dreamcast:Dreamcast:&492000:Jako:Dreamcast:Dreamcast:"
-					"&412000:Mr. Vid:Dreamcast:Dreamcast:&399600:Sonic94:Dreamcast:Dreamcast:&377000:NiGHTs2:Dreamcast:Dreamcast:"
-					"&368000:Topaz95:Dreamcast:Dreamcast:&&&");
-			return;
-		}
-		return CgiHandler::handleRequest(request, reply);
 	}
+	return params;
+}
 
-	static HighScoreHandler Instance;
-};
-
-HighScoreHandler HighScoreHandler::Instance;
+static void handleHighScoreRequest(const Request& request, Reply& reply)
+{
+	DEBUG_LOG("ranking.cgi: [%s]", request.content.c_str());
+	if (request.content.substr(0, 10) == "request=1 ")
+	{
+		// Naomi: Register new high score
+		std::string s = request.content.substr(10);
+		std::string plain = decrypt(s, NaomiKey);
+		DEBUG_LOG("New Naomi high score: %s", plain.c_str());
+		std::vector<std::string> params = splitParams(plain);
+		if (params.size() >= 6)
+		{
+			try {
+				registerNewScore(atol(params[5].c_str()), params[0], params[1], params[2], params[3]);
+				reply = Reply::stockReply(Reply::ok);
+			} catch (const std::runtime_error& e) {
+				ERROR_LOG("Naomi high score registration failed: %s", e.what());
+				reply = Reply::stockReply(Reply::internal_server_error);
+			}
+		}
+		return;
+	}
+	if (request.content == "request=2")
+	{
+		// Naomi: Return top 10 players
+		// TODO DC: unknown usage. No content in request.
+		try {
+			reply.setContent("***" + getTop10Scores() + "&&&");
+		} catch (const std::runtime_error& e) {
+			ERROR_LOG("Naomi high score fetch failed: %s", e.what());
+			reply = Reply::stockReply(Reply::internal_server_error);
+		}
+		return;
+	}
+	if (request.content.substr(0, 10) == "request=3 ")
+	{
+		// Register new high score (if any) and fetch the top 10
+		// example: &000000000000&0.0.0.0&0&1 (no high score)
+		// or FLY2&000000000000&192.168.167.2&210000&3 (FLY2, score 210000, from IP 192.168.167.2)
+		std::string s = request.content.substr(10);
+		std::string plain = decrypt(s, DreamcastKey);
+		DEBUG_LOG("New DC high score: %s", plain.c_str());
+		std::vector<std::string> params = splitParams(plain);
+		if (params.size() >= 4)
+		{
+			try {
+				registerNewDcScore(atol(params[3].c_str()), params[0]);
+			} catch (const std::runtime_error& e) {
+				ERROR_LOG("DC high score registration failed: %s", e.what());
+			}
+		}
+		try {
+			reply.setContent("***" + getTop10Scores() + "&&&");
+		} catch (const std::runtime_error& e) {
+			ERROR_LOG("DC high score fetch failed: %s", e.what());
+			reply = Reply::stockReply(Reply::internal_server_error);
+		}
+		return;
+	}
+	replyNotFound(request, reply);
+}
 
 class ServerImpl : public Server
 {
 public:
 	ServerImpl(asio::io_context& io_context)
-		: io_context(io_context), signals(io_context), httpServer(io_context, serverIp, 8080)
+		: io_context(io_context), signals(io_context), httpServer(io_context, "0.0.0.0", 8080)
 	{
 		signals.add(SIGINT);
 		signals.add(SIGTERM);
@@ -134,21 +177,13 @@ public:
 		//           Server2/NaomiNetwork/CGI/SampleCGI4
 		//           Server2/NaomiNetwork/CGI/RankingSys/ranking.cgi
 		// afo: AFODC/RankingSys/ranking.cgi
-		httpServer.addCgiHandler("Server2/NaomiNetwork/CGI/RankingSys/ranking.cgi",
-				[](const Request& request, Reply& reply)
-				{
-					HighScoreHandler::Instance.handleRequest(request, reply);
-				});
-		httpServer.addCgiHandler("AFODC/RankingSys/ranking.cgi",
-				[](const Request& request, Reply& reply)
-				{
-					HighScoreHandler::Instance.handleRequest(request, reply);
-				});
+		httpServer.addCgiHandler("Server2/NaomiNetwork/CGI/RankingSys/ranking.cgi", handleHighScoreRequest);
+		httpServer.addCgiHandler("AFODC/RankingSys/ranking.cgi", handleHighScoreRequest);
 		httpServer.addCgiHandler("AFODC/CGI/AFODCCGI",
-				[this](const Request& request, Reply& reply)
-				{
-					this->handleHttpRequest(request, reply);
-				});
+			[this](const Request& request, Reply& reply)
+			{
+				this->handleHttpRequest(request, reply);
+			});
 	}
 
 	void deleteGame(Game::Ptr game) override
@@ -240,7 +275,7 @@ private:
 					Game::Ptr game = Game::create(*this, io_context, ports.back());
 					ports.pop_back();
 					game->setName(gameName);
-					game->setType(gameType);
+					game->setType((Game::GameType)gameType);
 					game->setMaps(maps);
 					game->setSlots(slots);
 					games.push_back(game);
@@ -253,8 +288,8 @@ private:
 			}
 		}
 		if (reqType == -1) {
-			CgiHandler error;
-			return error.handleRequest(request, reply);
+			replyNotFound(request, reply);
+			return;
 		}
 		if (reqType == 0)
 		{
@@ -287,13 +322,46 @@ private:
 	std::vector<uint16_t> ports;
 };
 
+static void loadConfig(const std::string& path)
+{
+	std::filebuf fb;
+	if (!fb.open(path, std::ios::in)) {
+		ERROR_LOG("config file %s not found", path.c_str());
+		return;
+	}
+
+	std::istream istream(&fb);
+	std::string line;
+	while (std::getline(istream, line))
+	{
+		if (line.empty() || line[0] == '#')
+			continue;
+		auto pos = line.find_first_of("=:");
+		if (pos != std::string::npos)
+			Config[line.substr(0, pos)] = line.substr(pos + 1);
+		else
+			ERROR_LOG("config file syntax error: %s", line.c_str());
+	}
+}
+
+std::string getConfig(const std::string& name, const std::string& default_value)
+{
+	auto it = Config.find(name);
+	if (it == Config.end())
+		return default_value;
+	else
+		return it->second;
+}
+
 int main(int argc, char *argv[])
 {
-	if (argc < 2) {
-		fprintf(stderr, "Usage: %s <server IP address>\n", argv[0]);
+	if (argc > 2) {
+		fprintf(stderr, "Usage: %s [<config file path>]\n", argv[0]);
 		return 1;
 	}
-	serverIp = argv[1];
+	loadConfig(argc < 2 ? "afo.cfg" : argv[1]);
+	serverIp = getConfig("ServerIP", "127.0.0.1");
+	setDatabasePath(getConfig("DatabasePath", "./afo.db"));
 	NOTICE_LOG("Alien Front Online server started");
 	try {
 		asio::io_context io_context;
