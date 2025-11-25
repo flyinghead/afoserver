@@ -22,7 +22,7 @@ std::string serverIp;
 
 Game::Game(Server& server, asio::io_context& io_context, uint16_t port)
 	: server(server), io_context(io_context), port(port),
-	  socket(io_context, asio::ip::udp::endpoint(asio::ip::udp::v4(), port + 1)),
+	  socket(io_context, asio::ip::udp::endpoint(asio::ip::make_address_v4(serverIp), port + 1)),
 	  pingTimer(io_context)
 {
 	asio::socket_base::reuse_address option(true);
