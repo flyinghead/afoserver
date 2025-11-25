@@ -284,18 +284,6 @@ private:
 					replyContent += game->getHttpDesc(false);
 					DEBUG_LOG("Create game: %s", replyContent.c_str());
 					replyContent += "\nCREATED\nGAMEDONE\n";
-					int armySlots = 0, alienSlots = 0;
-					for (int i = 0; i < 8; i++)
-					{
-						if (slots[i] == Game::Open || slots[i] == Game::Open_CPU)
-						{
-							if (i >= 4)
-								alienSlots++;
-							else
-								armySlots++;
-						}
-					}
-					discordGameCreated(game->getType(), gameName, playerName, armySlots, alienSlots);
 					break;
 				}
 			}

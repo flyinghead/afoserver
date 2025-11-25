@@ -132,7 +132,10 @@ void Player::receiveTcp(const uint8_t *data, size_t len)
 					players.push_back(game->getPlayer(i)->getName());
 				}
 			}
-			discordGameJoined(game->getType(), game->getName(), name, players, armySlots, alienSlots);
+			if (players.size() == 1)
+				discordGameCreated(game->getType(), game->getName(), name, armySlots, alienSlots);
+			else
+				discordGameJoined(game->getType(), game->getName(), name, players, armySlots, alienSlots);
 
 			break;
 		}
