@@ -20,11 +20,6 @@
 #include <stddef.h>
 #include <string>
 
-inline static void trim(std::string& s) {
-	while (s.back() == '\0')
-		s.pop_back();
-}
-
 namespace Log {
 enum LEVEL
 {

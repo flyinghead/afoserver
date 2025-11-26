@@ -7,7 +7,7 @@ sbindir = $(exec_prefix)/sbin
 sysconfdir = $(prefix)/etc
 CFLAGS = -g -Wall -O3 # -DNDEBUG -fsanitize=address -static-libasan
 CXXFLAGS = $(CFLAGS) -std=c++17
-DEPS=asio.h tomcrypt.h http.h player.h log.h db.h discord.h json.hpp Makefile
+DEPS=asio.h tomcrypt.h http.h player.h log.h game.h db.h discord.h json.hpp Makefile
 OBJS=http.o rc5.o player.o log.o server.o game.o db.o discord.o
 USER = dcnet
 
@@ -42,5 +42,6 @@ installservice: afo.service
 
 createdb:
 	mkdir -p /var/lib/afo/
+	chown $(USER):$(USER) /var/lib/afo
 	sqlite3 /var/lib/afo/afo.db < createdb.sql
 	chown $(USER):$(USER) /var/lib/afo/afo.db

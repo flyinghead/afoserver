@@ -34,8 +34,9 @@ void Game::start()
 	gameAcceptor = GameAcceptor::create(io_context, shared_from_this());
 	gameAcceptor->start();
 	udpRead();
-	pingTimer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(1));
-	pingTimer.async_wait(std::bind(&Game::onPing, shared_from_this(), asio::placeholders::error));
+	// Initial timeout is 5 secs until the game creator connects
+	pingTimer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(5));
+	pingTimer.async_wait(std::bind(&Game::onInitialTimeout, shared_from_this(), asio::placeholders::error));
 	NOTICE_LOG("Game %s [port %d] started", name.c_str(), port);
 }
 
@@ -97,6 +98,13 @@ int Game::assignSlot(Player::Ptr player, bool alien)
 			slot.type = Filled;
 			slot.player = player;
 			slot.lastUdpReceive = asio::chrono::steady_clock::now();
+			if (pingSeq == 0)
+			{
+				// Start ping timer
+				pingSeq++;
+				pingTimer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(1));
+				pingTimer.async_wait(std::bind(&Game::onPing, shared_from_this(), asio::placeholders::error));
+			}
 			return i;
 		}
 	}
@@ -190,8 +198,24 @@ void Game::tcpSendToAll(const uint8_t *data, size_t len, const Player::Ptr& exce
 			slot.player->sendTcp(data, len);
 }
 
+void Game::onInitialTimeout(const std::error_code& ec)
+{
+	if (ec)
+		return;
+	NOTICE_LOG("Game %s [port %d] timed out", name.c_str(), port);
+	if (gameAcceptor != nullptr) {
+		gameAcceptor->stop();
+		gameAcceptor = nullptr;
+	}
+	std::error_code ignored;
+	socket.close(ignored);
+	server.deleteGame(shared_from_this());
+}
+
 void Game::onPing(const std::error_code& ec)
 {
+	if (ec)
+		return;
 	uint8_t pkt[] { 0x0a, 0x00, 0x78, (uint8_t)(pingSeq & 0xff), (uint8_t)(pingSeq >> 8), 0x00, 0x00, 0x04, 0x08, 0x08 };
 	pingSeq++;
 	udpSendToAll(pkt, sizeof(pkt));
@@ -214,6 +238,7 @@ void Game::disconnect(Player::Ptr player)
 		{
 			INFO_LOG("Player %s left game %s", slot.player->getName().c_str(), name.c_str());
 			slot.type = slot.openType;
+			slot.player->resetSlotNum();
 			slot.player->disconnect();
 			slot.player = nullptr;
 		}

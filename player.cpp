@@ -104,12 +104,12 @@ void Player::receiveTcp(const uint8_t *data, size_t len)
 		{
 			if (len < 43) {
 				WARN_LOG("TCP packet 0 is too short: %zd", len);
+				dumpData(data, len);
 				break;
 			}
 			// port is assumed to be 7980 (offset 5)
-			std::string userName(&data[27], &data[27 + 8]);
-			trim(userName);
-			name = userName;
+			// offset 9 might be PID (6 used, 18 total)
+			name = (const char *)&data[27];
 			setExtraData(&data[27 + 8]);
 			bool alien = (bool)data[36];
 			assignSlot(alien);
@@ -187,7 +187,7 @@ void Player::disconnect()
 		connection->close();
 		connection = nullptr;
 	}
-	if (game != nullptr)
+	if (game != nullptr && slotNum != -1)
 	{
 		// avoid endless recursivity
 		auto lgame = game;

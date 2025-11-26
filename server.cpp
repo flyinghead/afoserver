@@ -130,7 +130,7 @@ static void handleHighScoreRequest(const Request& request, Reply& reply)
 	{
 		// Register new high score (if any) and fetch the top 10
 		// example: &000000000000&0.0.0.0&0&1 (no high score)
-		// or FLY2&000000000000&192.168.167.2&210000&3 (FLY2, score 210000, from IP 192.168.167.2)
+		// or FLY2&000000000000&192.168.167.2&210000&3 (FLY2, player ID 000000000000 score 210000, from IP 192.168.167.2)
 		std::string s = request.content.substr(10);
 		std::string plain = decrypt(s, DreamcastKey);
 		DEBUG_LOG("New DC high score: %s", plain.c_str());
@@ -177,8 +177,46 @@ public:
 		// alienfnt: Server2/NaomiNetwork/CGI/Watch
 		//           Server2/NaomiNetwork/CGI/SampleCGI4
 		//           Server2/NaomiNetwork/CGI/RankingSys/ranking.cgi
-		// afo: AFODC/RankingSys/ranking.cgi
 		httpServer.addCgiHandler("Server2/NaomiNetwork/CGI/RankingSys/ranking.cgi", handleHighScoreRequest);
+		httpServer.addCgiHandler("Server2/NaomiNetwork/CGI/Watch",
+			[this](const Request& request, Reply& reply)
+			{
+				DEBUG_LOG("/NaomiNetwork/CGI/Watch: [%s]", request.content.c_str());
+				// Data1=s:s:i:s:s:s:s:c:c:c:c 04 00 81 00 48 00 00 00 02 00 10 00 0f 00 f4 01 01 fe fd fc
+				//       close to Data1 param of AFODC: unknown
+				// Data2=c 00
+				// Data3=c*8:c:c:c:c:s:s fb fb fb fb fb fb fb fb fb fb fb fb fb fb fb fb
+				std::vector<std::string> params = splitParams(request.content);
+				for (const std::string& param : params)
+				{
+					size_t pos = param.find('=');
+					if (pos == param.npos)
+						continue;
+					std::string plain = descramble(param.substr(pos + 1));
+					fprintf(stderr, "%s=", param.substr(0, pos).c_str());
+					pos = plain.find('\0');
+					if (pos == plain.npos)
+						fprintf(stderr, "null char not found\n");
+					else
+					{
+						fprintf(stderr, "%s ", plain.substr(0, pos).c_str());
+						pos++;
+						dumpData((uint8_t *)&plain[pos], plain.length() - pos);
+					}
+				}
+				std::string replyContent;
+				for (const auto& game : games)
+					replyContent += game->getHttpDesc(false) + " GAMEDONE\n";
+				reply.setContent(replyContent + "END\n");
+			});
+		httpServer.addCgiHandler("Server2/NaomiNetwork/CGI/SampleCGI4",
+			[this](const Request& request, Reply& reply)
+			{
+				DEBUG_LOG("/NaomiNetwork/CGI/SampleCGI4: [%s]", request.content.c_str());
+				reply.setContent("END\n");
+			});
+		// afo: AFODC/RankingSys/ranking.cgi
+		//      AFODC/CGI/AFODCCGI
 		httpServer.addCgiHandler("AFODC/RankingSys/ranking.cgi", handleHighScoreRequest);
 		httpServer.addCgiHandler("AFODC/CGI/AFODCCGI",
 			[this](const Request& request, Reply& reply)
@@ -217,6 +255,7 @@ private:
 
 	void handleHttpRequest(const Request& request, Reply& reply)
 	{
+		DEBUG_LOG("AFODCCGI: [%s]", request.content.c_str());
 		int reqType = -1;
 		int gamePort = -1;
 		std::string playerName;
@@ -226,9 +265,10 @@ private:
 		{
 			if (param.substr(0, 4) == "PID=")
 			{
-				std::string value = descramble(param.substr(4));
-				if (value.substr(0, 4) == "c*18")
-					DEBUG_LOG("PID=%s", value.substr(5).c_str());
+				// Player ID (6 bytes). Also sent as param #2 when registering a new high score. TODO how do you get one?
+				//std::string value = descramble(param.substr(4));
+				//if (value.substr(0, 4) == "c*18")
+				//	DEBUG_LOG("PID=%s", value.substr(5).c_str());
 			}
 			else if (param.substr(0, 8) == "Request=")
 			{
@@ -252,8 +292,7 @@ private:
 				std::string value = descramble(param.substr(6));
 				if (value.substr(0, 17) == "c*8:c:c:c:c:s:c:c" && value[17] == '\0')
 				{
-					playerName = std::string(&value[18], &value[26]);
-					trim(playerName);
+					playerName = &value[18];
 					DEBUG_LOG("Player: %s (%x %x %x %x %x %x %x)", playerName.c_str(),
 							value[26] & 0xff, value[27] & 0xff, value[28] & 0xff, value[29] & 0xff,
 							(value[30] & 0xff) + (value[31] & 0xff) * 256, value[32] & 0xff, value[33] & 0xff);
@@ -264,8 +303,7 @@ private:
 				std::string value = descramble(param.substr(6));
 				if (value.substr(0, 16) == "c*16:i:i:c*8:c*8" && value[16] == '\0')
 				{
-					std::string gameName = std::string(&value[17], &value[33]);
-					trim(gameName);
+					std::string gameName = &value[17];
 					unsigned gameType, maps;
 					memcpy(&gameType, &value[33], 4);
 					memcpy(&maps, &value[37], 4);

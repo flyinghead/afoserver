@@ -80,6 +80,7 @@ private:
 	void onPing(const std::error_code& ec);
 	void udpSendToAll(const uint8_t *data, size_t len, const std::shared_ptr<Player>& except = nullptr);
 	std::array<uint8_t, 0x82> getPlayerList() const;
+	void onInitialTimeout(const std::error_code& ec);
 
 	Server& server;
 	asio::io_context& io_context;
@@ -101,7 +102,7 @@ private:
 	std::array<uint8_t, 1510> recvbuf;
 	asio::ip::udp::endpoint source;	// source endpoint when receiving UDP packets
 	asio::steady_timer pingTimer;
-	uint16_t pingSeq = 1;
+	uint16_t pingSeq = 0;
 
 	friend super;
 };

@@ -92,6 +92,8 @@ public:
 	const asio::ip::udp::endpoint& getUdpEndpoint() const { return endpoint; }
 
 	int assignSlot(bool alien);
+	void resetSlotNum() { slotNum = -1; }
+
 	void receiveTcp(const uint8_t *data, size_t len);
 	void sendTcp(const uint8_t *data, size_t len);
 	void disconnect();
