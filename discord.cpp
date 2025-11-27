@@ -124,6 +124,19 @@ static std::string typeDesc(Game::GameType type)
 	}
 }
 
+static std::string escapeMarkdown(const std::string& s)
+{
+	std::string ret;
+	for (char c : s)
+	{
+		if (c == '*' || c == '_' || c == '`' || c == '~' || c == '<'
+				|| c == '>' || c == ':' || c == '[' || c == '\\')
+			ret += '\\';
+		ret += c;
+	}
+	return ret;
+}
+
 void discordGameJoined(Game::GameType gameType, const std::string& gameName, const std::string& username,
 		const std::vector<std::string>& playerList, int armySlots, int alienSlots)
 {
@@ -134,11 +147,11 @@ void discordGameJoined(Game::GameType gameType, const std::string& gameName, con
 		return;
 	last_notif = now;
 	Notif notif;
-	notif.content = "Player **" + username + "** joined " + typeDesc(gameType) + " game **" + gameName + "**";
+	notif.content = "Player **" + escapeMarkdown(username) + "** joined " + typeDesc(gameType) + " game **" + escapeMarkdown(gameName) + "**";
 	notif.embed.title = "Players";
 	for (const auto& player : playerList)
-		notif.embed.text += player + "\n";
-	notif.embed.text += "Open slots:\n:military_helmet: "
+		notif.embed.text += escapeMarkdown(player) + "\n";
+	notif.embed.text += "\n**Open slots**\n:military_helmet: "
 			+ std::to_string(armySlots) + "\n:alien: " + std::to_string(alienSlots) + "\n";
 	discordNotif(notif);
 }
@@ -147,9 +160,9 @@ void discordGameCreated(Game::GameType gameType, const std::string& gameName, co
 		int armySlots, int alienSlots)
 {
 	Notif notif;
-	notif.content = "Player **" + username + "** created " + typeDesc(gameType) + " game **" + gameName + "**";
+	notif.content = "Player **" + escapeMarkdown(username) + "** created " + typeDesc(gameType) + " game **" + escapeMarkdown(gameName) + "**";
 	notif.embed.title = "Players";
-	notif.embed.text += username + "\nOpen slots:\n:military_helmet: "
+	notif.embed.text += escapeMarkdown(username) + "\n\n**Open slots**\n:military_helmet: "
 			+ std::to_string(armySlots) + "\n:alien: " + std::to_string(alienSlots) + "\n";
 	discordNotif(notif);
 }

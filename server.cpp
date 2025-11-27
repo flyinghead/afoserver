@@ -25,6 +25,8 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <cctype>
 
 static std::unordered_map<std::string, std::string> Config;
 
@@ -122,7 +124,9 @@ static void handleHighScoreRequest(const Request& request, Reply& reply)
 		// Naomi: Return top 10 players
 		// TODO DC: unknown usage. No content in request.
 		try {
-			reply.setContent("***" + getTop10Scores() + "&&&");
+			std::string scores = getTop10Scores();
+			std::for_each(scores.begin(), scores.end(), [](char &c) { c = std::toupper((unsigned char)c); });
+			reply.setContent("***" + scores + "&&&");
 		} catch (const std::runtime_error& e) {
 			ERROR_LOG("Naomi high score fetch failed: %s", e.what());
 			reply = Reply::stockReply(Reply::internal_server_error);
