@@ -348,6 +348,8 @@ bool RequestHandler::urlDecode(const std::string& in, std::string& out)
 
 RequestParser::result_type RequestParser::consume(Request& req, char input)
 {
+	if (state != reading_content && ++headLength > MAX_HEAD_LEN)
+		return bad;
 	switch (state)
 	{
 	case method_start:
@@ -434,7 +436,6 @@ RequestParser::result_type RequestParser::consume(Request& req, char input)
 	case http_version_slash:
 		if (input == '/')
 		{
-			req.http_version_major = 0;
 			req.http_version_minor = 0;
 			state = http_version_major_start;
 			return indeterminate;
@@ -446,7 +447,8 @@ RequestParser::result_type RequestParser::consume(Request& req, char input)
 	case http_version_major_start:
 		if (isDigit(input))
 		{
-			req.http_version_major = req.http_version_major * 10 + input - '0';
+			if (input != '1')
+				return bad;
 			state = http_version_major;
 			return indeterminate;
 		}
@@ -460,11 +462,6 @@ RequestParser::result_type RequestParser::consume(Request& req, char input)
 			state = http_version_minor_start;
 			return indeterminate;
 		}
-		else if (isDigit(input))
-		{
-			req.http_version_major = req.http_version_major * 10 + input - '0';
-			return indeterminate;
-		}
 		else
 		{
 			return bad;
@@ -472,7 +469,7 @@ RequestParser::result_type RequestParser::consume(Request& req, char input)
 	case http_version_minor_start:
 		if (isDigit(input))
 		{
-			req.http_version_minor = req.http_version_minor * 10 + input - '0';
+			req.http_version_minor = input - '0';
 			state = http_version_minor;
 			return indeterminate;
 		}
@@ -486,13 +483,7 @@ RequestParser::result_type RequestParser::consume(Request& req, char input)
 			state = expecting_newline_1;
 			return indeterminate;
 		}
-		else if (isDigit(input))
-		{
-			req.http_version_minor = req.http_version_minor * 10 + input - '0';
-			return indeterminate;
-		}
-		else
-		{
+		else {
 			return bad;
 		}
 	case expecting_newline_1:
@@ -606,8 +597,11 @@ RequestParser::result_type RequestParser::consume(Request& req, char input)
 				contentLength = 0;
 				for (const Header& header : req.headers)
 				{
-					if (!strcasecmp(header.name.c_str(), "Content-Length")) {
+					if (!strcasecmp(header.name.c_str(), "Content-Length"))
+					{
 						contentLength = std::atol(header.value.c_str());
+						if (contentLength > MAX_BODY_LEN)
+							return bad;
 						break;
 					}
 				}
@@ -623,7 +617,9 @@ RequestParser::result_type RequestParser::consume(Request& req, char input)
 		}
 	case reading_content:
 		req.content.push_back(input);
-		if (req.content.size() == contentLength)
+		if (req.content.size() > MAX_BODY_LEN)
+			return bad;
+		else if (req.content.size() == contentLength)
 			return good;
 		else
 			return indeterminate;

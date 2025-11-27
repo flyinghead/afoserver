@@ -26,7 +26,6 @@ struct Request
 {
 	std::string method;
 	std::string uri;
-	int http_version_major;
 	int http_version_minor;
 	std::vector<Header> headers;
 	std::string content;
@@ -118,6 +117,7 @@ public:
 	/// Reset to initial parser state.
 	void reset() {
 		state = method_start;
+		headLength = 0;
 		contentLength = 0;
 	}
 
@@ -196,7 +196,11 @@ private:
 		expecting_newline_3,
 		reading_content
 	} state;
+	size_t headLength = 0;
 	size_t contentLength = 0;
+
+	static constexpr size_t MAX_HEAD_LEN = 2048;
+	static constexpr size_t MAX_BODY_LEN = 4096;
 };
 
 class ConnectionManager;

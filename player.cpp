@@ -19,6 +19,19 @@
 #include "game.h"
 #include "discord.h"
 
+void GameConnection::start()
+{
+	// Wait for a valid login packet for 10 sec then close the connection.
+	timeoutTimer.expires_after(asio::chrono::seconds(10));
+	timeoutTimer.async_wait([this](const std::error_code& ec) {
+		if (!ec && player != nullptr) {
+			ERROR_LOG("[%s] Connection timed out", player->getIp().c_str());
+			player->disconnect();
+		}
+	});
+	receive();
+}
+
 void GameConnection::receive() {
 	asio::async_read_until(socket, recvBuffer, packetMatcher,
 			std::bind(&GameConnection::onReceive, shared_from_this(), asio::placeholders::error, asio::placeholders::bytes_transferred));
@@ -64,8 +77,23 @@ void GameConnection::onReceive(const std::error_code& ec, size_t len)
 			player->disconnect();
 		return;
 	}
+	// Check for (too) large packets
+	uint16_t pktlen = *(uint16_t *)recvBuffer.bytes();
+	if (pktlen > MAX_PKT_LEN)
+	{
+		std::string addr;
+		if (player)
+			addr = player->getIp();
+		else
+			addr = "?.?.?.?";
+		ERROR_LOG("[%s] onReceive: jumbo packet: %zd", addr.c_str(), pktlen);
+		if (player)
+			player->disconnect();
+		return;
+	}
 	// Grab data and process if correct.
-	player->receiveTcp(recvBuffer.bytes(), len);
+	if (player->receiveTcp(recvBuffer.bytes(), len))
+		timeoutTimer.cancel();
 	recvBuffer.consume(len);
 	receive();
 }
@@ -75,7 +103,8 @@ void GameConnection::onSent(const std::error_code& ec, size_t len)
 	if (ec)
 	{
 		if (ec != asio::error::eof && ec != asio::error::bad_descriptor)
-			ERROR_LOG("onSent: %s", ec.message().c_str());
+			ERROR_LOG("[%s] onSent: %s", player != nullptr ? player->getIp().c_str() : "?.?.?.?",
+					ec.message().c_str());
 		if (player)
 			player->disconnect();
 		return;
@@ -96,14 +125,27 @@ void GameConnection::close()
 	player = nullptr;
 }
 
-void Player::receiveTcp(const uint8_t *data, size_t len)
+bool Player::receiveTcp(const uint8_t *data, size_t len)
 {
 	switch (data[2])
 	{
 	case 0: // Login
 		{
+			if (data[7] == 0)
+			{
+				// Spectator
+				NOTICE_LOG("Adding spectator: %s", endpoint.address().to_string().c_str());
+				game->addSpectator(shared_from_this());
+				//uint8_t data[] { 0, 255, 0 };
+				//connection->sendPacket(0, data, sizeof(data));
+				uint8_t data[] { 1, 0, 0 }; // 1 occupied slot at 0?
+				connection->sendPacket(0, data, sizeof(data));
+
+				game->sendPlayerList();
+				return true;
+			}
 			if (len < 43) {
-				WARN_LOG("TCP packet 0 is too short: %zd", len);
+				WARN_LOG("%s [%s] TCP packet 0 is too short: %zd", name.c_str(), getIp().c_str(), len);
 				dumpData(data, len);
 				break;
 			}
@@ -137,15 +179,16 @@ void Player::receiveTcp(const uint8_t *data, size_t len)
 			else
 				discordGameJoined(game->getType(), game->getName(), name, players, armySlots, alienSlots);
 
-			break;
+			return true;
 		}
 	case 1: // Update extra data?
 		{
 			if (len < 20) {
-				WARN_LOG("TCP packet 1 is too short: %zd", len);
+				WARN_LOG("%s [%s] TCP packet 1 is too short: %zd", name.c_str(), getIp().c_str(), len);
 			}
 			else
 			{
+				DEBUG_LOG("%s [%s][slot %d] Packet1 updateState", name.c_str(), getIp().c_str(), slotNum);
 				setExtraData(&data[12]);
 				// broadcast as 14 00 02 ...
 				std::array<uint8_t, 20> out;
@@ -156,18 +199,21 @@ void Player::receiveTcp(const uint8_t *data, size_t len)
 			break;
 		}
 	case 7: // Player list ack'ed ?
-		DEBUG_LOG("Player list ack'ed");
+		DEBUG_LOG("%s [%s][slot %d] Player list ack'ed", name.c_str(), getIp().c_str(), slotNum);
 		break;
 	case 0x78: // ???
-		DEBUG_LOG("Packet 78");
+		DEBUG_LOG("%s [%s][slot %d] Packet 78", name.c_str(), getIp().c_str(), slotNum);
 		connection->sendPacket(0x78, &data[3], len - 3);
 		// broadcast to other players
-		game->tcpSendToAll(data, len, shared_from_this());
+		if (slotNum != -1)
+			game->tcpSendToAll(data, len, shared_from_this());
 		break;
 	default:
-		WARN_LOG("Unhandled game packet: %02x", data[2]);
+		WARN_LOG("%s [%s] Unhandled game packet: %02x", name.c_str(), getIp().c_str(), data[2]);
+		dumpData(data, len);
 		break;
 	}
+	return false;
 }
 
 void Player::sendTcp(const uint8_t *data, size_t len) {
@@ -177,7 +223,7 @@ void Player::sendTcp(const uint8_t *data, size_t len) {
 int Player::assignSlot(bool alien)
 {
 	slotNum = game->assignSlot(shared_from_this(), alien);
-	DEBUG_LOG("Player %s assigned slot %d", name.c_str(), slotNum);
+	DEBUG_LOG("Player %s [%s] assigned slot %d", name.c_str(), getIp().c_str(), slotNum);
 	return slotNum;
 }
 
@@ -187,11 +233,14 @@ void Player::disconnect()
 		connection->close();
 		connection = nullptr;
 	}
-	if (game != nullptr && slotNum != -1)
+	if (game != nullptr)
 	{
 		// avoid endless recursivity
 		auto lgame = game;
 		game = nullptr;
-		lgame->disconnect(shared_from_this());
+		if (slotNum != -1)
+			lgame->disconnect(shared_from_this());
+		else
+			lgame->removeSpectator(shared_from_this());
 	}
 }

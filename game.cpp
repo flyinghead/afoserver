@@ -149,7 +149,7 @@ void Game::udpRead()
 			{
 				if (ec != asio::error::operation_aborted
 						&& ec != asio::error::bad_descriptor)
-					ERROR_LOG("UDP receive_from failed: %s", ec.message().c_str());
+					ERROR_LOG("[port %d] UDP receive_from failed: %s", port, ec.message().c_str());
 				return;
 			}
 			//dump(recvbuf.data(), len);
@@ -161,6 +161,14 @@ void Game::udpRead()
 					player = slot.player;
 					break;
 				}
+			// TODO alienfnt sends a ping every sec
+			//if (player == nullptr)
+			//{
+			//	for (const auto& spectator : spectators) {
+			//		slot.lastUdpReceive = asio::chrono::steady_clock::now();
+			//		break;
+			//	}
+			//}
 			if (player != nullptr)
 			{
 				switch (recvbuf[2])
@@ -173,9 +181,12 @@ void Game::udpRead()
 					// ignore pings?
 					break;
 				default:
-					WARN_LOG("UDP packet %02x not handled", recvbuf[2]);
+					WARN_LOG("[port %d] UDP packet %02x not handled", port, recvbuf[2]);
 					break;
 				}
+			}
+			else {
+				WARN_LOG("[port %d] UDP from unknown source: %s:%d", port, source.address().to_string().c_str(), source.port());
 			}
 			udpRead();
 		});
@@ -189,6 +200,8 @@ void Game::udpSendToAll(const uint8_t *data, size_t len, const Player::Ptr& exce
 	for (auto& slot : slots)
 		if (slot.player != nullptr && slot.player != except)
 			socket.send_to(asio::buffer(data, len), slot.player->getUdpEndpoint(), 0, ec);
+	for (const auto& spectator : spectators)
+		socket.send_to(asio::buffer(data, len), spectator->getUdpEndpoint(), 0, ec);
 }
 
 void Game::tcpSendToAll(const uint8_t *data, size_t len, const Player::Ptr& except) const
@@ -196,6 +209,8 @@ void Game::tcpSendToAll(const uint8_t *data, size_t len, const Player::Ptr& exce
 	for (auto& slot : slots)
 		if (slot.player != nullptr && slot.player != except)
 			slot.player->sendTcp(data, len);
+	for (const auto& spectator : spectators)
+		spectator->sendTcp(data, len);
 }
 
 void Game::onInitialTimeout(const std::error_code& ec)
@@ -225,7 +240,7 @@ void Game::onPing(const std::error_code& ec)
 	auto now = asio::chrono::steady_clock::now();
 	for (auto& slot : slots)
 		if (slot.player != nullptr && slot.lastUdpReceive + asio::chrono::seconds(30) <= now) {
-			INFO_LOG("Player %s has timed out", slot.player->getName().c_str());
+			INFO_LOG("[port %d] Player %s has timed out", port, slot.player->getName().c_str());
 			disconnect(slot.player);
 		}
 }
@@ -236,7 +251,7 @@ void Game::disconnect(Player::Ptr player)
 	for (auto& slot : slots)
 		if (slot.player == player)
 		{
-			INFO_LOG("Player %s left game %s", slot.player->getName().c_str(), name.c_str());
+			INFO_LOG("[port %d] Player %s left game %s", port, slot.player->getName().c_str(), name.c_str());
 			slot.type = slot.openType;
 			slot.player->resetSlotNum();
 			slot.player->disconnect();
@@ -259,6 +274,15 @@ void Game::disconnect(Player::Ptr player)
 	server.deleteGame(shared_from_this());
 }
 
+void Game::addSpectator(Player::Ptr player) {
+	spectators.push_back(player);
+}
+
+void Game::removeSpectator(Player::Ptr player) {
+	auto it = std::remove(spectators.begin(), spectators.end(), player);
+	spectators.erase(it, spectators.end());
+}
+
 void GameAcceptor::start()
 {
 	GameConnection::Ptr newConnection = GameConnection::create(io_context);
@@ -275,9 +299,9 @@ void GameAcceptor::handleAccept(GameConnection::Ptr newConnection, const std::er
 	if (!error)
 	{
 		Player::Ptr player = Player::create(newConnection, game);
-		INFO_LOG("New connection from %s", newConnection->getSocket().remote_endpoint().address().to_string().c_str());
+		INFO_LOG("[port %d] New connection from %s", game->getIpPort(), newConnection->getSocket().remote_endpoint().address().to_string().c_str());
 		newConnection->setPlayer(player);
-		newConnection->receive();
+		newConnection->start();
 	}
 	start();
 }

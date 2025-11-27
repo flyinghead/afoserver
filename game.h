@@ -18,7 +18,10 @@
 #pragma once
 #include "shared_this.h"
 #include "asio.h"
-#include "log.h"
+#include <array>
+#include <vector>
+#include <memory>
+#include <string>
 
 extern std::string serverIp;
 
@@ -74,6 +77,9 @@ public:
 
 	void disconnect(std::shared_ptr<Player> player);
 
+	void addSpectator(std::shared_ptr<Player> player);
+	void removeSpectator(std::shared_ptr<Player> player);
+
 private:
 	Game(Server& server, asio::io_context& io_context, uint16_t port);
 	void udpRead();
@@ -97,6 +103,7 @@ private:
 	};
 	std::array<PlayerSlot, 8> slots;
 	std::shared_ptr<GameAcceptor> gameAcceptor;
+	std::vector<std::shared_ptr<Player>> spectators;
 	// UDP socket stuff
 	asio::ip::udp::socket socket;
 	std::array<uint8_t, 1510> recvbuf;

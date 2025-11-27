@@ -32,7 +32,7 @@ public:
 		this->player = player;
 	}
 
-	void receive();
+	void start();
 
 	void sendPacket(uint8_t opcode, const uint8_t *payload = nullptr, unsigned size = 0);
 
@@ -40,10 +40,11 @@ public:
 
 private:
 	GameConnection(asio::io_context& io_context)
-		: io_context(io_context), socket(io_context)
+		: io_context(io_context), socket(io_context), timeoutTimer(io_context)
 	{
 	}
 
+	void receive();
 	void send();
 	void onSent(const std::error_code& ec, size_t len);
 
@@ -57,6 +58,8 @@ private:
 		iterator i = begin;
 		uint16_t len = (uint8_t)*i++;
 		len |= uint8_t(*i++) << 8;
+		if (len > MAX_PKT_LEN)
+			return std::make_pair(end, true);
 		if (end - begin < len)
 			return std::make_pair(begin, false);
 		return std::make_pair(begin + len, true);
@@ -71,6 +74,9 @@ private:
 	size_t sendIdx = 0;
 	bool sending = false;
 	std::shared_ptr<Player> player;
+	asio::steady_timer timeoutTimer;
+
+	static constexpr size_t MAX_PKT_LEN = 512;
 
 	friend super;
 };
@@ -94,7 +100,7 @@ public:
 	int assignSlot(bool alien);
 	void resetSlotNum() { slotNum = -1; }
 
-	void receiveTcp(const uint8_t *data, size_t len);
+	bool receiveTcp(const uint8_t *data, size_t len); // returns true when a valid login packet is received
 	void sendTcp(const uint8_t *data, size_t len);
 	void disconnect();
 

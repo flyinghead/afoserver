@@ -15,6 +15,7 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+#include "log.h"
 #include "http.h"
 #include "game.h"
 #include "tomcrypt.h"
@@ -22,6 +23,8 @@
 #include "discord.h"
 #include <unordered_map>
 #include <fstream>
+#include <string>
+#include <vector>
 
 static std::unordered_map<std::string, std::string> Config;
 
