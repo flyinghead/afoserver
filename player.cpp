@@ -23,10 +23,10 @@ void GameConnection::start()
 {
 	// Wait for a valid login packet for 10 sec then close the connection.
 	timeoutTimer.expires_after(asio::chrono::seconds(10));
-	timeoutTimer.async_wait([this](const std::error_code& ec) {
-		if (!ec && player != nullptr) {
-			ERROR_LOG("[%s] Connection timed out", player->getIp().c_str());
-			player->disconnect();
+	timeoutTimer.async_wait([self = shared_from_this()](const std::error_code& ec) {
+		if (!ec && self->player != nullptr) {
+			ERROR_LOG("[%s] Connection timed out", self->player->getIp().c_str());
+			self->player->disconnect();
 		}
 	});
 	receive();

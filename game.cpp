@@ -18,11 +18,9 @@
 #include "game.h"
 #include "player.h"
 
-std::string serverIp;
-
-Game::Game(Server& server, asio::io_context& io_context, uint16_t port)
-	: server(server), io_context(io_context), port(port),
-	  socket(io_context, asio::ip::udp::endpoint(asio::ip::make_address_v4(serverIp), port + 1)),
+Game::Game(Server& server, asio::io_context& io_context, const std::string& serverIp, uint16_t port)
+	: server(server), io_context(io_context), serverIp(serverIp), port(port),
+	  socket(io_context, asio::ip::udp::endpoint(asio::ip::address_v4(), port + 1)),
 	  pingTimer(io_context)
 {
 	asio::socket_base::reuse_address option(true);
@@ -34,8 +32,8 @@ void Game::start()
 	gameAcceptor = GameAcceptor::create(io_context, shared_from_this());
 	gameAcceptor->start();
 	udpRead();
-	// Initial timeout is 5 secs until the game creator connects
-	pingTimer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(5));
+	// Initial timeout is 10 secs until the game creator connects
+	pingTimer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(10));
 	pingTimer.async_wait(std::bind(&Game::onInitialTimeout, shared_from_this(), asio::placeholders::error));
 	NOTICE_LOG("Game %s [port %d] started", name.c_str(), port);
 }

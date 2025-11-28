@@ -219,6 +219,7 @@ public:
 
 	/// Start the first asynchronous operation for the connection.
 	void start() {
+		startTimer();
 		doRead();
 	}
 
@@ -235,6 +236,8 @@ private:
 
 	/// Perform an asynchronous write operation.
 	void doWrite();
+
+	void startTimer();
 
 	/// Socket for the connection.
 	asio::ip::tcp::socket socket;
@@ -258,6 +261,8 @@ private:
 	Reply reply;
 
 	bool keepAlive = false;
+
+	asio::steady_timer timeoutTimer;
 };
 
 /// Manages open connections so that they may be cleanly stopped when the server

@@ -644,7 +644,8 @@ bool RequestParser::isTSpecial(int c)
 
 Connection::Connection(asio::ip::tcp::socket socket,
 		ConnectionManager& manager, RequestHandler& handler)
-	: socket(std::move(socket)), connectionManager(manager), requestHandler(handler)
+	: socket(std::move(socket)), connectionManager(manager), requestHandler(handler),
+	  timeoutTimer(socket.get_executor())
 {
 }
 
@@ -702,6 +703,7 @@ void Connection::doWrite()
 					keepAlive = false;
 					request = {};
 					reply = {};
+					startTimer();
 					doRead();
 				}
 			}
@@ -709,6 +711,20 @@ void Connection::doWrite()
 			if (ec != asio::error::operation_aborted)
 				connectionManager.stop(shared_from_this());
 		});
+}
+
+void Connection::startTimer()
+{
+	timeoutTimer.expires_after(asio::chrono::seconds(30));
+	timeoutTimer.async_wait([self = shared_from_this()](const std::error_code& ec) {
+		if (!ec)
+		{
+			std::error_code ignored;
+			self->socket.shutdown(asio::ip::tcp::socket::shutdown_both, ignored);
+			self->connectionManager.stop(self);
+		}
+	});
+
 }
 
 void ConnectionManager::start(Connection::Ptr c) {

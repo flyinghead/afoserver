@@ -135,7 +135,7 @@ static void handleHighScoreRequest(const Request& request, Reply& reply)
 	}
 	if (request.content.substr(0, 10) == "request=3 ")
 	{
-		// Register new high score (if any) and fetch the top 10
+		// DC: Register new high score (if any) and fetch the top 10
 		// example: &000000000000&0.0.0.0&0&1 (no high score)
 		// or FLY2&000000000000&192.168.167.2&210000&3 (FLY2, player ID 000000000000 score 210000, from IP 192.168.167.2)
 		std::string s = request.content.substr(10);
@@ -164,8 +164,10 @@ static void handleHighScoreRequest(const Request& request, Reply& reply)
 class ServerImpl : public Server
 {
 public:
-	ServerImpl(asio::io_context& io_context)
-		: io_context(io_context), signals(io_context), httpServer(io_context, "0.0.0.0", 8080)
+	ServerImpl(asio::io_context& io_context, const std::string& serverIp,
+			uint16_t portMin = 9400, uint16_t portMax = 9419)
+		: io_context(io_context), serverIp(serverIp),
+		  signals(io_context), httpServer(io_context, "0.0.0.0", 8080)
 	{
 		signals.add(SIGINT);
 		signals.add(SIGTERM);
@@ -178,7 +180,7 @@ public:
 				this->io_context.stop();
 			});
 
-		for (uint16_t port = 9400; port < 9420; port++)
+		for (uint16_t port = portMin; port <= portMax; port++)
 			ports.push_back(port);
 
 		// alienfnt: Server2/NaomiNetwork/CGI/Watch
@@ -318,7 +320,7 @@ private:
 					memcpy(slots.data(), &value[41], sizeof(slots));
 					std::array<uint8_t, 8> sides;
 					memcpy(sides.data(), &value[49], sizeof(sides));
-					Game::Ptr game = Game::create(*this, io_context, ports.back());
+					Game::Ptr game = Game::create(*this, io_context, serverIp, ports.back());
 					ports.pop_back();
 					game->setName(gameName);
 					game->setType((Game::GameType)gameType);
@@ -359,6 +361,7 @@ private:
 
 private:
 	asio::io_context& io_context;
+	std::string serverIp;
 
 	/// The signal_set is used to register for process termination notifications.
 	asio::signal_set signals;
@@ -390,7 +393,7 @@ static void loadConfig(const std::string& path)
 	}
 }
 
-std::string getConfig(const std::string& name, const std::string& default_value)
+std::string getConfig(const std::string& name, const std::string& default_value = "")
 {
 	auto it = Config.find(name);
 	if (it == Config.end())
@@ -407,13 +410,23 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	loadConfig(argc < 2 ? "afo.cfg" : argv[1]);
-	serverIp = getConfig("ServerIP", "127.0.0.1");
-	setDatabasePath(getConfig("DatabasePath", "./afo.db"));
-	setDiscordWebhook(getConfig("DiscordWebhook", ""));
+	setDatabasePath(getConfig("DatabasePath", "afo.db"));
+	setDiscordWebhook(getConfig("DiscordWebhook"));
+	std::string serverIp = getConfig("ServerIP", "127.0.0.1");
+	std::string serverPorts = getConfig("ServerPorts", "9400-9419");
+	size_t pos = serverPorts.find('-');
+	uint16_t portMin = 9400;
+	uint16_t portMax = 9419;
+	if (pos != std::string::npos)
+	{
+		portMin = atoi(serverPorts.substr(0, pos).c_str());
+		portMax = atoi(serverPorts.substr(pos + 1).c_str());
+	}
 	NOTICE_LOG("Alien Front Online server started");
+	NOTICE_LOG("Server IP %s TCP ports %d-%d UDP ports %d-%d", serverIp.c_str(), portMin, portMax, portMin + 1, portMax + 1);
 	try {
 		asio::io_context io_context;
-		ServerImpl server(io_context);
+		ServerImpl server(io_context, serverIp, portMin, portMax);
 		io_context.run();
 	}
 	catch (const std::exception& e) {

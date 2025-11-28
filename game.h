@@ -23,8 +23,6 @@
 #include <memory>
 #include <string>
 
-extern std::string serverIp;
-
 class GameAcceptor;
 class Server;
 class Player;
@@ -81,7 +79,7 @@ public:
 	void removeSpectator(std::shared_ptr<Player> player);
 
 private:
-	Game(Server& server, asio::io_context& io_context, uint16_t port);
+	Game(Server& server, asio::io_context& io_context, const std::string& serverIp, uint16_t port);
 	void udpRead();
 	void onPing(const std::error_code& ec);
 	void udpSendToAll(const uint8_t *data, size_t len, const std::shared_ptr<Player>& except = nullptr);
@@ -90,6 +88,7 @@ private:
 
 	Server& server;
 	asio::io_context& io_context;
+	std::string serverIp;
 	std::string name;
 	uint16_t port;
 	GameType type {};
